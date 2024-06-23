@@ -1,39 +1,36 @@
-import logo from './logo.svg';
 import './App.scss';
-import Marquee from "react-fast-marquee";
-import SlideComponent from './components/SlideComponent';
-
-import { Swiper, SwiperSlide } from 'swiper/react';
-import React, { useCallback } from 'react';
-
-// import './styles.css';
-
-// import required modules
-import { Keyboard, Pagination, Navigation, Autoplay } from 'swiper/modules';
-import { useState,useRef ,useEffect} from 'react';
-import Typed from 'typed.js';
-import CountUp from 'react-countup';
-import AOS from 'aos';
-import 'aos/dist/aos.css'; 
-import { useDropzone } from 'react-dropzone';
+import React, { useCallback, useState, useRef } from 'react';
 
 function App() {
   const [dragging, setDragging] = useState(Array(6).fill(false));
   const [images, setImages] = useState(Array(6).fill(null));
+  const [rotatedImages, setRotatedImages] = useState(Array(6).fill(null));
+  const [rotations, setRotations] = useState(Array(6).fill(0));
+  const [showRotateButtons, setShowRotateButtons] = useState(Array(6).fill(true));
   const [pageTitle, setPageTitle] = useState('');
+  const canvasRef = useRef(null);
 
   const onDrop = useCallback((index) => (e) => {
     e.preventDefault();
     const files = e.dataTransfer.files;
     if (files && files[0]) {
-      const newImages = [...images];
-      newImages[index] = URL.createObjectURL(files[0]);
-      setImages(newImages);
+      const file = files[0];
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const newImages = [...images];
+        newImages[index] = event.target.result;
+        setImages(newImages);
+        rotateImage(index, event.target.result, 0);
+        const newShowRotateButtons = [...showRotateButtons];
+        newShowRotateButtons[index] = true;
+        setShowRotateButtons(newShowRotateButtons);
+      };
+      reader.readAsDataURL(file);
     }
     const newDragging = [...dragging];
     newDragging[index] = false;
     setDragging(newDragging);
-  }, [dragging, images]);
+  }, [dragging, images, showRotateButtons]);
 
   const onDragOver = useCallback((index) => (e) => {
     e.preventDefault();
@@ -50,27 +47,77 @@ function App() {
 
   const onFileChange = (index) => (e) => {
     if (e.target.files && e.target.files[0]) {
-      const newImages = [...images];
-      newImages[index] = URL.createObjectURL(e.target.files[0]);
-      setImages(newImages);
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const newImages = [...images];
+        newImages[index] = event.target.result;
+        setImages(newImages);
+        rotateImage(index, event.target.result, 0);
+        const newShowRotateButtons = [...showRotateButtons];
+        newShowRotateButtons[index] = true;
+        setShowRotateButtons(newShowRotateButtons);
+      };
+      reader.readAsDataURL(file);
     }
   };
+
+  const rotateImage = (index, src, angle) => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    img.onload = () => {
+      const newAngle = (rotations[index] + angle) % 360;
+      if (newAngle === 90 || newAngle === 270) {
+        canvas.width = img.height;
+        canvas.height = img.width;
+      } else {
+        canvas.width = img.width;
+        canvas.height = img.height;
+      }
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate((newAngle * Math.PI) / 180);
+      ctx.drawImage(img, -img.width / 2, -img.height / 2);
+      const newRotatedImages = [...rotatedImages];
+      newRotatedImages[index] = canvas.toDataURL();
+      setRotatedImages(newRotatedImages);
+
+      const newRotations = [...rotations];
+      newRotations[index] = newAngle;
+      setRotations(newRotations);
+    };
+    img.src = src;
+  };
+
+  const handleRotateClick = (index) => () => {
+    if (images[index]) {
+      rotateImage(index, images[index], 90);
+    }
+  };
+
+  const handleDeleteClick = (index) => () => {
+    const newShowRotateButtons = [...showRotateButtons];
+    newShowRotateButtons[index] = false;
+    setShowRotateButtons(newShowRotateButtons);
+  };
+
   return (
     <>
+      <canvas ref={canvasRef} style={{ display: 'none' }}></canvas>
       <div className='main'>
         <input
-            type="text"
-            placeholder="Fime Name"
-            value={pageTitle}
-            onChange={(e) => setPageTitle(e.target.value)}
-            className="page-title-input"
-          />
-          <h1>{pageTitle}</h1>
+          type="text"
+          placeholder="Page Title"
+          value={pageTitle}
+          onChange={(e) => setPageTitle(e.target.value)}
+          className="page-title-input"
+        />
+        <h1>{pageTitle}</h1>
         <div className='box--list'>
-
           {Array.from({ length: 6 }).map((_, index) => (
             <div className="box--item" key={index}>
-              <p>Images{index + 1}</p>
+              <p>Image {index + 1}</p>
               <form className="file-upload-form">
                 <label
                   htmlFor={`file${index}`}
@@ -81,13 +128,18 @@ function App() {
                     onDrop={onDrop(index)}
                     onDragOver={onDragOver(index)}
                     onDragLeave={onDragLeave(index)}
-                    style={{
-                      backgroundImage: images[index] ? `url(${images[index]})` : 'none',
-                      backgroundSize: 'cover',
-                      backgroundPosition: 'center'
-                    }}
                   >
-                    {!images[index] && (
+                    {rotatedImages[index] ? (
+                      <img
+                        src={rotatedImages[index]}
+                        alt={`Rotated ${index}`}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover'
+                        }}
+                      />
+                    ) : (
                       <>
                         <svg viewBox="0 0 640 512" height="1em">
                           <path
@@ -108,6 +160,16 @@ function App() {
                   />
                 </label>
               </form>
+              {images[index] && showRotateButtons[index] && (
+                <>
+                  <button onClick={handleRotateClick(index)} className="rotate-button">
+                    Rotate 90°
+                  </button>
+                  <button onClick={handleDeleteClick(index)} className="delete-button">
+                    Delete
+                  </button>
+                </>
+              )}
             </div>
           ))}
         </div>
